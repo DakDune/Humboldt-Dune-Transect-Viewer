@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from io import BytesIO
+import re
 
 # -----------------------------
 # PAGE CONFIG
@@ -24,19 +25,39 @@ os.environ["MAPBOX_API_KEY"] = st.secrets["MAPBOX_API_KEY"]
 gdf, survey_dict = load_transect_data()
 
 # -----------------------------
-# SIDEBAR - TRANSECT
+# SORT TRANSECTS PROPERLY
+# -----------------------------
+def sort_key(x):
+    match = re.match(r"T(\d+)", x)
+    if match:
+        return (0, int(match.group(1)))
+    else:
+        return (1, x)
+
+transect_ids = sorted(gdf["transect_id"].tolist(), key=sort_key)
+
+# -----------------------------
+# SESSION STATE (for click selection)
+# -----------------------------
+if "selected_transect" not in st.session_state:
+    st.session_state.selected_transect = transect_ids[0]
+
+# -----------------------------
+# SIDEBAR
 # -----------------------------
 st.sidebar.header("Transect Selection")
 
-transect_ids = sorted(gdf["transect_id"].tolist())
-
 selected_transect = st.sidebar.selectbox(
     "Select Transect",
-    transect_ids
+    transect_ids,
+    index=transect_ids.index(st.session_state.selected_transect)
 )
 
+# Sync session state
+st.session_state.selected_transect = selected_transect
+
 # -----------------------------
-# SIDEBAR - DATE SELECTION
+# DATE SELECTION
 # -----------------------------
 transect_surveys = survey_dict[selected_transect]
 
@@ -53,7 +74,6 @@ for sid, data in transect_surveys.items():
 
     date_records.append((clean_date, sid))
 
-# SORT DATES
 date_records = sorted(date_records, key=lambda x: x[0])
 
 date_options = [d[0] for d in date_records]
@@ -86,11 +106,8 @@ gdf["coordinates"] = gdf.geometry.apply(
 selected_geom = gdf[gdf["transect_id"] == selected_transect].geometry.iloc[0]
 centroid = selected_geom.centroid
 
-center_lat = centroid.y
-center_lon = centroid.x
-
 # -----------------------------
-# MAP
+# MAP LAYER
 # -----------------------------
 layer = pdk.Layer(
     "PathLayer",
@@ -102,8 +119,8 @@ layer = pdk.Layer(
 )
 
 view_state = pdk.ViewState(
-    latitude=center_lat,
-    longitude=center_lon,
+    latitude=centroid.y,
+    longitude=centroid.x,
     zoom=14,
     pitch=0,
 )
@@ -115,7 +132,19 @@ deck = pdk.Deck(
     tooltip={"text": "Transect: {transect_id}"},
 )
 
-st.pydeck_chart(deck)
+# -----------------------------
+# MAP DISPLAY WITH CLICK CAPTURE
+# -----------------------------
+event = st.pydeck_chart(deck)
+
+# Attempt to capture click
+if event and hasattr(event, "selected") and event.selected:
+    try:
+        clicked = event.selected[0]["object"]["transect_id"]
+        st.session_state.selected_transect = clicked
+        st.rerun()
+    except:
+        pass
 
 # -----------------------------
 # PROFILE PLOT
@@ -124,8 +153,7 @@ if selected_dates:
 
     fig, ax = plt.subplots(figsize=(9, 5))
 
-    # PROFESSIONAL COLOR SCHEME (muted, publication-style)
-    colors = plt.cm.viridis(np.linspace(0, 1, len(selected_dates)))
+    colors = plt.cm.cividis(np.linspace(0, 1, len(selected_dates)))
 
     all_station = []
     all_elev = []
@@ -148,19 +176,15 @@ if selected_dates:
         all_station.extend(station)
         all_elev.extend(elev)
 
-    # Fixed axes
     ax.set_xlim(min(all_station), max(all_station))
     ax.set_ylim(min(all_elev), max(all_elev))
 
-    # Labels
-    ax.set_xlabel("Cross-shore Distance (m)", fontsize=11)
-    ax.set_ylabel("Elevation (m)", fontsize=11)
-    ax.set_title(f"Transect {selected_transect}", fontsize=13)
+    ax.set_xlabel("Cross-shore Distance (m)")
+    ax.set_ylabel("Elevation (m)")
+    ax.set_title(f"Transect {selected_transect}")
 
-    # Clean grid
     ax.grid(True, linestyle="--", alpha=0.3)
 
-    # Cleaner legend
     if len(selected_dates) <= 8:
         ax.legend(fontsize=8, frameon=False)
     else:
@@ -168,9 +192,7 @@ if selected_dates:
 
     st.pyplot(fig)
 
-    # -----------------------------
-    # DOWNLOAD BUTTON (PNG)
-    # -----------------------------
+    # DOWNLOAD
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
     buf.seek(0)
