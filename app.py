@@ -16,61 +16,80 @@ from pathlib import Path
 st.set_page_config(layout="wide")
 
 # -----------------------------
-# BACKGROUND + STYLING
+# FORCE BACKGROUND + STYLE
 # -----------------------------
-def set_background(image_path):
-    with open(image_path, "rb") as img_file:
-        b64_string = base64.b64encode(img_file.read()).decode()
+def apply_styling(image_path):
+    if image_path.exists():
+        with open(image_path, "rb") as img_file:
+            b64 = base64.b64encode(img_file.read()).decode()
 
-    st.markdown(
-        f"""
+        background_css = f"""
         <style>
 
-        /* FULL PAGE BACKGROUND */
-        html, body, [data-testid="stAppViewContainer"] {{
-            background: url("data:image/jpg;base64,{b64_string}") no-repeat center center fixed;
+        /* TRUE ROOT BACKGROUND */
+        .stApp {{
+            background-image: linear-gradient(
+                rgba(240, 248, 255, 0.75),
+                rgba(240, 248, 255, 0.75)
+            ), url("data:image/jpg;base64,{b64}");
             background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
         }}
 
-        /* MAIN CONTENT OVERLAY */
-        [data-testid="stAppViewContainer"] > .main {{
+        /* MAIN CONTENT CARD */
+        [data-testid="stAppViewContainer"] {{
+            background: transparent;
+        }}
+
+        .block-container {{
             background-color: rgba(255, 255, 255, 0.85);
-            padding: 1.5rem;
-            border-radius: 10px;
+            padding: 2rem;
+            border-radius: 12px;
         }}
 
         /* SIDEBAR */
         section[data-testid="stSidebar"] {{
-            background-color: rgba(245, 250, 255, 0.95);
-            border-right: 1px solid #ddd;
+            background: linear-gradient(
+                to bottom,
+                #f0f6ff,
+                #ffffff
+            );
+            border-right: 1px solid #d6e4f0;
         }}
 
         /* TITLE */
         h1 {{
             color: #1f4e79;
-            font-weight: 600;
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }}
 
-        /* GENERAL TEXT */
-        body {{
-            color: #222;
+        /* SUBHEADERS */
+        h2, h3 {{
+            color: #2c6da4;
+        }}
+
+        /* BUTTON */
+        .stDownloadButton > button {{
+            background-color: #2c6da4;
+            color: white;
+            border-radius: 6px;
+            border: none;
         }}
 
         </style>
-        """,
-        unsafe_allow_html=True
-    )
+        """
+        st.markdown(background_css, unsafe_allow_html=True)
 
-# Apply background
-bg_path = Path("assets/background.jpg")
-if bg_path.exists():
-    set_background(bg_path)
+# Apply styling
+apply_styling(Path("assets/background.jpg"))
 
 # -----------------------------
 # TITLE
 # -----------------------------
 st.markdown(
-    "<h1 style='text-align: center;'>Dune Transect Viewer</h1>",
+    "<h1 style='text-align:center;'>Humboldt Dunes Cross Shore Profile Viewer</h1>",
     unsafe_allow_html=True
 )
 
@@ -91,8 +110,7 @@ def sort_key(x):
     match = re.match(r"T(\d+)", x)
     if match:
         return (0, int(match.group(1)))
-    else:
-        return (1, x)
+    return (1, x)
 
 transect_ids = sorted(gdf["transect_id"].tolist(), key=sort_key)
 
@@ -121,19 +139,14 @@ st.session_state.selected_transect = selected_transect
 transect_surveys = survey_dict[selected_transect]
 
 date_records = []
-
 for sid, data in transect_surveys.items():
-    raw_date = data["date"]
-
     try:
-        dt = pd.to_datetime(raw_date)
-        clean_date = dt.strftime("%Y-%m-%d")
+        clean_date = pd.to_datetime(data["date"]).strftime("%Y-%m-%d")
     except:
-        clean_date = str(raw_date)
-
+        clean_date = str(data["date"])
     date_records.append((clean_date, sid))
 
-date_records = sorted(date_records, key=lambda x: x[0])
+date_records = sorted(date_records)
 
 date_options = [d[0] for d in date_records]
 survey_lookup = {d[0]: d[1] for d in date_records}
@@ -148,11 +161,11 @@ selected_dates = st.sidebar.multiselect(
 # STYLE TRANSECTS
 # -----------------------------
 gdf["color"] = gdf["transect_id"].apply(
-    lambda x: [220, 60, 60] if x == selected_transect else [0, 180, 220]
+    lambda x: [255, 80, 80] if x == selected_transect else [0, 160, 200]
 )
 
 gdf["width"] = gdf["transect_id"].apply(
-    lambda x: 50 if x == selected_transect else 12
+    lambda x: 60 if x == selected_transect else 15
 )
 
 gdf["coordinates"] = gdf.geometry.apply(
@@ -162,8 +175,8 @@ gdf["coordinates"] = gdf.geometry.apply(
 # -----------------------------
 # AUTO-ZOOM
 # -----------------------------
-selected_geom = gdf[gdf["transect_id"] == selected_transect].geometry.iloc[0]
-centroid = selected_geom.centroid
+geom = gdf[gdf["transect_id"] == selected_transect].geometry.iloc[0]
+centroid = geom.centroid
 
 # -----------------------------
 # MAP
@@ -181,20 +194,19 @@ view_state = pdk.ViewState(
     latitude=centroid.y,
     longitude=centroid.x,
     zoom=14,
-    pitch=0,
 )
 
 deck = pdk.Deck(
     layers=[layer],
     initial_view_state=view_state,
     map_style="mapbox://styles/mapbox/satellite-v9",
-    tooltip={"text": "Transect: {transect_id}"},
+    tooltip={"text": "Transect: {transect_id}"}
 )
 
 st.pydeck_chart(deck)
 
 # -----------------------------
-# PROFILE PLOT
+# PLOT
 # -----------------------------
 if selected_dates:
 
@@ -202,29 +214,22 @@ if selected_dates:
 
     colors = plt.cm.cividis(np.linspace(0, 1, len(selected_dates)))
 
-    all_station = []
-    all_elev = []
+    all_s, all_e = [], []
 
     for i, d in enumerate(selected_dates):
         sid = survey_lookup[d]
         data = transect_surveys[sid]
 
-        station = data["station"]
-        elev = data["elev"]
+        s = data["station"]
+        e = data["elev"]
 
-        ax.plot(
-            station,
-            elev,
-            label=d,
-            color=colors[i],
-            linewidth=2
-        )
+        ax.plot(s, e, color=colors[i], linewidth=2, label=d)
 
-        all_station.extend(station)
-        all_elev.extend(elev)
+        all_s.extend(s)
+        all_e.extend(e)
 
-    ax.set_xlim(min(all_station), max(all_station))
-    ax.set_ylim(min(all_elev), max(all_elev))
+    ax.set_xlim(min(all_s), max(all_s))
+    ax.set_ylim(min(all_e), max(all_e))
 
     ax.set_xlabel("Cross-shore Distance (m)")
     ax.set_ylabel("Elevation (m)")
@@ -233,33 +238,27 @@ if selected_dates:
     ax.grid(True, linestyle="--", alpha=0.3)
 
     if len(selected_dates) <= 8:
-        ax.legend(fontsize=8, frameon=False)
+        ax.legend(frameon=False, fontsize=8)
     else:
-        ax.legend(fontsize=7, ncol=2, frameon=False)
+        ax.legend(frameon=False, fontsize=7, ncol=2)
 
     st.pyplot(fig)
 
-    # DOWNLOAD
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
     buf.seek(0)
 
     st.download_button(
-        label="Download Plot as PNG",
-        data=buf,
-        file_name=f"{selected_transect}_profiles.png",
-        mime="image/png"
+        "Download Plot",
+        buf,
+        f"{selected_transect}.png",
+        "image/png"
     )
 
 # -----------------------------
 # FOOTER
 # -----------------------------
 st.markdown(
-    """
-    <hr>
-    <div style="text-align: center; font-size: 12px; color: #555;">
-        By Dakota Fee | dakotafee@ucsb.edu
-    </div>
-    """,
+    "<hr><div style='text-align:center;color:#555;font-size:12px;'>By Dakota Fee | dakotafee@ucsb.edu</div>",
     unsafe_allow_html=True
 )
