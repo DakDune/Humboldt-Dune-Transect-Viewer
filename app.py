@@ -7,12 +7,63 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 import re
+import base64
+from pathlib import Path
 
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
 st.set_page_config(layout="wide")
-st.title("Dune Transect Viewer")
+
+# -----------------------------
+# BACKGROUND IMAGE FUNCTION
+# -----------------------------
+def set_background(image_path):
+    with open(image_path, "rb") as img_file:
+        b64_string = base64.b64encode(img_file.read()).decode()
+
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background: linear-gradient(
+                rgba(255,255,255,0.88),
+                rgba(255,255,255,0.88)
+            ),
+            url("data:image/jpg;base64,{b64_string}");
+            background-size: cover;
+            background-attachment: fixed;
+        }}
+
+        section[data-testid="stSidebar"] {{
+            background-color: rgba(255,255,255,0.92);
+        }}
+
+        .block-container {{
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+# Apply background if image exists
+bg_path = Path("assets/background.jpg")
+if bg_path.exists():
+    set_background(bg_path)
+
+# -----------------------------
+# TITLE
+# -----------------------------
+st.markdown(
+    """
+    <h1 style='text-align: center; margin-bottom: 0.5em;'>
+        Humboldt Dunes Cross Shore Profile Viewer
+    </h1>
+    """,
+    unsafe_allow_html=True
+)
 
 # -----------------------------
 # MAPBOX TOKEN
@@ -25,7 +76,7 @@ os.environ["MAPBOX_API_KEY"] = st.secrets["MAPBOX_API_KEY"]
 gdf, survey_dict = load_transect_data()
 
 # -----------------------------
-# SORT TRANSECTS PROPERLY
+# SORT TRANSECTS
 # -----------------------------
 def sort_key(x):
     match = re.match(r"T(\d+)", x)
@@ -37,7 +88,7 @@ def sort_key(x):
 transect_ids = sorted(gdf["transect_id"].tolist(), key=sort_key)
 
 # -----------------------------
-# SESSION STATE (for click selection)
+# SESSION STATE
 # -----------------------------
 if "selected_transect" not in st.session_state:
     st.session_state.selected_transect = transect_ids[0]
@@ -53,7 +104,6 @@ selected_transect = st.sidebar.selectbox(
     index=transect_ids.index(st.session_state.selected_transect)
 )
 
-# Sync session state
 st.session_state.selected_transect = selected_transect
 
 # -----------------------------
@@ -107,7 +157,7 @@ selected_geom = gdf[gdf["transect_id"] == selected_transect].geometry.iloc[0]
 centroid = selected_geom.centroid
 
 # -----------------------------
-# MAP LAYER
+# MAP
 # -----------------------------
 layer = pdk.Layer(
     "PathLayer",
@@ -132,19 +182,7 @@ deck = pdk.Deck(
     tooltip={"text": "Transect: {transect_id}"},
 )
 
-# -----------------------------
-# MAP DISPLAY WITH CLICK CAPTURE
-# -----------------------------
-event = st.pydeck_chart(deck)
-
-# Attempt to capture click
-if event and hasattr(event, "selected") and event.selected:
-    try:
-        clicked = event.selected[0]["object"]["transect_id"]
-        st.session_state.selected_transect = clicked
-        st.rerun()
-    except:
-        pass
+st.pydeck_chart(deck)
 
 # -----------------------------
 # PROFILE PLOT
@@ -192,7 +230,7 @@ if selected_dates:
 
     st.pyplot(fig)
 
-    # DOWNLOAD
+    # DOWNLOAD BUTTON
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
     buf.seek(0)
@@ -203,3 +241,16 @@ if selected_dates:
         file_name=f"{selected_transect}_profiles.png",
         mime="image/png"
     )
+
+# -----------------------------
+# FOOTER
+# -----------------------------
+st.markdown(
+    """
+    <hr>
+    <div style="text-align: center; font-size: 12px; color: gray;">
+        By Dakota Fee | dakotafee@ucsb.edu
+    </div>
+    """,
+    unsafe_allow_html=True
+)
