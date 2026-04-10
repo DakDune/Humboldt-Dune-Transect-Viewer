@@ -16,7 +16,7 @@ from pathlib import Path
 st.set_page_config(layout="wide")
 
 # -----------------------------
-# BACKGROUND IMAGE FUNCTION
+# BACKGROUND + STYLING
 # -----------------------------
 def set_background(image_path):
     with open(image_path, "rb") as img_file:
@@ -25,30 +25,43 @@ def set_background(image_path):
     st.markdown(
         f"""
         <style>
-        .stApp {{
-            background: linear-gradient(
-                rgba(255,255,255,0.88),
-                rgba(255,255,255,0.88)
-            ),
-            url("data:image/jpg;base64,{b64_string}");
+
+        /* FULL PAGE BACKGROUND */
+        html, body, [data-testid="stAppViewContainer"] {{
+            background: url("data:image/jpg;base64,{b64_string}") no-repeat center center fixed;
             background-size: cover;
-            background-attachment: fixed;
         }}
 
+        /* MAIN CONTENT OVERLAY */
+        [data-testid="stAppViewContainer"] > .main {{
+            background-color: rgba(255, 255, 255, 0.85);
+            padding: 1.5rem;
+            border-radius: 10px;
+        }}
+
+        /* SIDEBAR */
         section[data-testid="stSidebar"] {{
-            background-color: rgba(255,255,255,0.92);
+            background-color: rgba(245, 250, 255, 0.95);
+            border-right: 1px solid #ddd;
         }}
 
-        .block-container {{
-            padding-top: 2rem;
-            padding-bottom: 2rem;
+        /* TITLE */
+        h1 {{
+            color: #1f4e79;
+            font-weight: 600;
         }}
+
+        /* GENERAL TEXT */
+        body {{
+            color: #222;
+        }}
+
         </style>
         """,
         unsafe_allow_html=True
     )
 
-# Apply background if image exists
+# Apply background
 bg_path = Path("assets/background.jpg")
 if bg_path.exists():
     set_background(bg_path)
@@ -57,11 +70,7 @@ if bg_path.exists():
 # TITLE
 # -----------------------------
 st.markdown(
-    """
-    <h1 style='text-align: center; margin-bottom: 0.5em;'>
-        Humboldt Dunes Cross Shore Profile Viewer
-    </h1>
-    """,
+    "<h1 style='text-align: center;'>Dune Transect Viewer</h1>",
     unsafe_allow_html=True
 )
 
@@ -230,7 +239,7 @@ if selected_dates:
 
     st.pyplot(fig)
 
-    # DOWNLOAD BUTTON
+    # DOWNLOAD
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
     buf.seek(0)
@@ -248,7 +257,7 @@ if selected_dates:
 st.markdown(
     """
     <hr>
-    <div style="text-align: center; font-size: 12px; color: gray;">
+    <div style="text-align: center; font-size: 12px; color: #555;">
         By Dakota Fee | dakotafee@ucsb.edu
     </div>
     """,
