@@ -119,16 +119,37 @@ def sort_key(x):
     return (1, str(x))
 
 
+def normalize_transect_id(x):
+    if pd.isna(x):
+        return None
+
+    s = str(x).strip().upper().replace(" ", "").replace("-", "_")
+
+    if s.startswith("T"):
+        num = s[1:]
+        if num.isdigit():
+            return f"T{int(num)}"
+        return s
+
+    if s.isdigit():
+        return f"T{int(s)}"
+
+    return s
+
+
 def compute_shoreline_trend(summary_df: pd.DataFrame, transect_id: str):
     if summary_df.empty:
         return None
 
-    df = summary_df[summary_df["transect_id"].astype(str) == str(transect_id)].copy()
+    df = summary_df.copy()
+    df["transect_id_norm"] = df["transect_id"].apply(normalize_transect_id)
+    target_id = normalize_transect_id(transect_id)
 
     required_cols = {"survey_date", "shoreline_station_m"}
     if not required_cols.issubset(df.columns):
         return None
 
+    df = df[df["transect_id_norm"] == target_id].copy()
     df = df.dropna(subset=["survey_date", "shoreline_station_m"]).sort_values("survey_date")
 
     if len(df) < 2:
@@ -271,7 +292,7 @@ if trend_result is not None:
             <div class="trend-label">Shoreline trend</div>
             <div class="trend-value">{year_label}: {slope_str}</div>
             <div class="trend-note">
-                Computed from shoreline_station_m in transect_per_survey
+                Computed from shoreline_station_m in ALL_SITES_MASTER.xlsx
                 using {trend_result['n_surveys']} surveys.
             </div>
         </div>
@@ -329,7 +350,6 @@ if selected_dates:
     for spine in ax.spines.values():
         spine.set_color("#b8cad6")
 
-    # Shoreline trend annotation inside plot
     if trend_result is not None:
         slope = trend_result["slope_m_per_yr"]
         year_label = f"{trend_result['start_year']}–{trend_result['end_year']}"
